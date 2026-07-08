@@ -261,7 +261,7 @@ const DATA = {"panouri": [["Longi", "Hi-MO 6 Explorer LR5-54HTH — 440W", 440, 
       fisierul pe gazduire.
    =========================================================================== */
 const SHEET_URL = '';            // optional
-const ACCESS_PASSWORD = 'InoSolar#2026';   // <-- parola de intrare in aplicatie
+const ACCESS_PASSWORD = '';   // parola dezactivata temporar pt testare (era 'InoSolar#2026')
 /* --- BACKEND prețuri (Google Apps Script) — recomandat pentru editare live ---
    BACKEND_URL: lipiti "Web app URL" din deploy-ul Apps Script (vezi fisierul .gs).
                 Cand e completat, aplicatia ia preturile de aici si achizitiile pot salva live.
@@ -269,7 +269,7 @@ const ACCESS_PASSWORD = 'InoSolar#2026';   // <-- parola de intrare in aplicatie
    PRICES_PASSWORD: parola pentru tabul "Preturi achizitie" (doar achizitiile). Gol = fara parola. */
 const BACKEND_URL = '';            // calculator proiecte mari — sursa proprie (gol = preturi incorporate). NU folositi backendul rezidential.
 const WRITE_TOKEN = 'ino-pret-9f3kQ7';  // acelasi token ca in Apps Script
-const PRICES_PASSWORD = 'achizitii';               // <-- parola tabului Preturi achizitie
+const PRICES_PASSWORD = '';               // parola dezactivata temporar pt testare (era 'achizitii')
 const $ = id => document.getElementById(id);
 const fmt = n => n.toLocaleString('ro-RO',{minimumFractionDigits:2, maximumFractionDigits:2});
 const PCT_DEFAULT = {adaos:30, online:5.5, cazare:3, neprev:3, tva:21};
@@ -858,7 +858,7 @@ window.tryUnlock = function(){
   }
 };
 $('gatepw').addEventListener('keydown',e=>{ if(e.key==='Enter') tryUnlock(); });
-if(sessionStorage.getItem('unlocked')==='1'){
+if(!ACCESS_PASSWORD || sessionStorage.getItem('unlocked')==='1'){
   $('gate').style.display='none'; document.body.classList.remove('locked'); boot();
 }else{
   $('gatepw').focus();
