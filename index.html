@@ -273,7 +273,7 @@ const ACCESS_PASSWORD = '';   // parola dezactivata temporar pt testare (era 'In
                 Cand e completat, aplicatia ia preturile de aici si achizitiile pot salva live.
    WRITE_TOKEN: acelasi token ca in Apps Script (pentru salvarea preturilor).
    PRICES_PASSWORD: parola pentru tabul "Preturi achizitie" (doar achizitiile). Gol = fara parola. */
-const BACKEND_URL = '';            // calculator proiecte mari — sursa proprie (gol = preturi incorporate). NU folositi backendul rezidential.
+const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbz8emwt-CsIXH1ljA-5fYIUvhbSVVD0AvK2CeYkaU6UVKhLSv_Re8PA5alnuZSJn1C1Rw/exec';            // calculator proiecte mari — sursa proprie (gol = preturi incorporate). NU folositi backendul rezidential.
 const WRITE_TOKEN = 'ino-pret-9f3kQ7';  // acelasi token ca in Apps Script
 const PRICES_PASSWORD = '';               // parola dezactivata temporar pt testare (era 'achizitii')
 const MAX_STRING_V = 750;   // tensiune maxima admisa pe string [V]
@@ -593,14 +593,16 @@ function num(v){
   return parseFloat(v)||0;
 }
 function applyCsv(text){ applyRows(parseCSV(text)); }
+let _passRows=[];
 function applyRows(rows){
+  _passRows=[];
   const P=[],I=[],B=[],SM={},AC={},AT=[],CB={},ST={},MN=[],AL={},CM={},CV=[];
   const S=v=>String(v==null?'':v).trim();
   for(const r of rows){
     const cat=S(r[0]).toUpperCase();
     const c1=S(r[1]), c2=S(r[2]), c3=S(r[3]), den=S(r[4]), pret=num(r[5]);
     if(cat==='PANOU') P.push([c1,c2,num(c3),pret]);
-    else if(cat==='INVERTOR') I.push([c1,c2,num(c3),den,pret]);
+    else if(cat==='INVERTOR'||cat==='INVERTOR_COM') I.push([c1,c2,num(c3),den,pret]);
     else if(cat==='BATERIE') B.push([c1,num(c2),den,pret]);
     else if(cat==='SMARTMETER') SM[c1+'|'+c2]=[den,pret];
     else if(cat==='ACCESORIU') AC[c1+'|'+c2]=[den,pret];
@@ -608,21 +610,25 @@ function applyRows(rows){
     else if(cat==='CABLU') CB[c1+'|'+c2]=[den,pret];
     else if(cat==='ALTE') AL[c1]=pret;
     else if(cat==='STRUCTURA') ST[c1]=pret;
-    else if(cat==='MANOPERA') MN.push([num(c1),num(c2),pret]);
+    else if(cat==='MANOPERA_COM') MN.push([num(c1),num(c2),pret]);
     else if(cat==='COMM') CM[c1]=[den,pret];
     else if(cat==='CIVIL') CV.push([c1,c2,pret]);
+    else if(cat && cat!=='CATEGORIE') _passRows.push(r.slice());
   }
+  // MERGE/overlay: catalogul incorporat e superset; Sheet-ul comun suprascrie preturi si adauga produse noi,
+  // fara sa piarda produsele comerciale (invertoare mari, cabluri mari, COMM, CIVIL) daca lipsesc din Sheet.
+  const _mergeArr=(base,inc,keyFn,priceIdx)=>{ if(!inc.length) return base; const m=new Map(base.map(x=>[keyFn(x),x.slice()])); inc.forEach(x=>{ const k=keyFn(x); if(m.has(k)) m.get(k)[priceIdx]=x[priceIdx]; else m.set(k,x); }); return [...m.values()]; };
+  DATA.invertoare=_mergeArr(DATA.invertoare,I,x=>x[0]+'|'+x[1]+'|'+x[2]+'|'+x[3],4);
   if(P.length) DATA.panouri=P;
-  if(I.length) DATA.invertoare=I;
   if(B.length) DATA.baterii=B;
-  if(Object.keys(SM).length) DATA.smartmeter=SM;
-  if(Object.keys(AC).length) DATA.acc=AC;
   if(AT.length) DATA.ats=AT;
-  if(Object.keys(CB).length) DATA.cabluri=CB;
+  if(Object.keys(SM).length) DATA.smartmeter=Object.assign({},DATA.smartmeter,SM);
+  if(Object.keys(AC).length) DATA.acc=Object.assign({},DATA.acc,AC);
+  if(Object.keys(CB).length) DATA.cabluri=Object.assign({},DATA.cabluri,CB);
   if(Object.keys(AL).length) Object.assign(DATA.alte,AL);
-  if(Object.keys(ST).length) DATA.structuraP=ST;
+  if(Object.keys(ST).length) DATA.structuraP=Object.assign({},DATA.structuraP,ST);
   if(MN.length) DATA.manopera=MN.sort((a,b)=>a[0]-b[0]);
-  if(Object.keys(CM).length) DATA.comm=CM;
+  if(Object.keys(CM).length) DATA.comm=Object.assign({},DATA.comm,CM);
   if(CV.length) DATA.civil=CV;
 }
 async function loadLive(){
@@ -691,7 +697,7 @@ function openOffer(){
 function buildRows(){
   const rows=[['Categorie','Camp1','Camp2','Camp3','Denumire','Pret']];
   DATA.panouri.forEach(p=>rows.push(['PANOU',p[0],p[1],p[2],'',p[3]]));
-  DATA.invertoare.forEach(i=>rows.push(['INVERTOR',i[0],i[1],i[2],i[3],i[4]]));
+  DATA.invertoare.forEach(i=>rows.push([(i[2]>30?'INVERTOR_COM':'INVERTOR'),i[0],i[1],i[2],i[3],i[4]]));
   DATA.baterii.forEach(b2=>rows.push(['BATERIE',b2[0],b2[1],'',b2[2],b2[3]]));
   Object.entries(DATA.smartmeter).forEach(([k,v])=>{const[a1,t]=k.split('|');rows.push(['SMARTMETER',a1,t,'',v[0],v[1]])});
   Object.entries(DATA.acc).forEach(([k,v])=>{const[c1,t]=k.split('|');rows.push(['ACCESORIU',c1,t,'',v[0],v[1]])});
@@ -699,9 +705,10 @@ function buildRows(){
   Object.entries(DATA.cabluri).forEach(([k,v])=>{const[t,sec]=k.split('|');rows.push(['CABLU',t,sec,'',v[0],v[1]])});
   Object.keys(DATA.alte).forEach(k=>rows.push(['ALTE',k,'','','',DATA.alte[k]]));
   Object.keys(DATA.structuraP).forEach(k=>rows.push(['STRUCTURA',k,'','','',DATA.structuraP[k]]));
-  DATA.manopera.forEach(m=>rows.push(['MANOPERA',m[0],m[1],'','',m[2]]));
+  DATA.manopera.forEach(m=>rows.push(['MANOPERA_COM',m[0],m[1],'','',m[2]]));
   if(DATA.comm) Object.keys(DATA.comm).forEach(k=>rows.push(['COMM',k,'','',DATA.comm[k][0],DATA.comm[k][1]]));
   if(DATA.civil) DATA.civil.forEach(c=>rows.push(['CIVIL',c[0],c[1],'','',c[2]]));
+  if(_passRows&&_passRows.length) _passRows.forEach(r=>rows.push(r));
   return rows;
 }
 let dirty=false;
