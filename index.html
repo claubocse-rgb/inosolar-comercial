@@ -26,6 +26,7 @@ header h1{font-size:18px}header h1 span{color:#ffd24d}
 .verif .warn{background:#fff1f0;border-color:#ffa39e;color:#a8071a;font-weight:600}
 .verif .ok{background:#f6ffed;border-color:#b7eb8f;color:#237804}
 .verif .neutral{background:#f4f6f9;border-color:var(--line);color:#667}
+.verif .info{background:#fffbe6;border-color:#ffe58f;color:#ad6800;font-weight:600}
 td .estflag{color:#a8071a;font-weight:700}
 #gate{position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,#1F4E78,#2E75B6);display:flex;align-items:center;justify-content:center;padding:20px}
 #gate .box{background:#fff;border-radius:14px;padding:30px 28px;width:100%;max-width:360px;box-shadow:0 18px 50px rgba(0,0,0,.3);text-align:center}
@@ -151,7 +152,7 @@ tr.sec td{background:#2E75B6;color:#fff;font-weight:700;font-size:11.5px;text-tr
    <div class="field">
     <label>9. Invertoare (acelasi producator ca la pct. 8 — maxim 8 buc total)</label>
     <div id="invlist"></div>
-    <button type="button" class="addinv" onclick="addInvRow()">+ Adauga invertor (putere diferita)</button>
+    <button type="button" class="addinv" onclick="markInvTouched();addInvRow()">+ Adauga invertor (putere diferita)</button>
    </div>
    <div class="row2">
     <div class="field"><label>10. Brand baterie</label><select id="bbrand"></select></div>
@@ -307,7 +308,7 @@ function invOptionsHtml(selected){
 }
 function qtyOptionsHtml(sel){ let h=''; for(let q=1;q<=8;q++) h+=`<option${q===sel?' selected':''}>${q}</option>`; return h; }
 function invRowHtml(model, qty){
-  return `<div class="invrow"><select class="invmodel" onchange="calc()">${invOptionsHtml(model)}</select><select class="invqty" onchange="calc()">${qtyOptionsHtml(qty)}</select><button type="button" class="invdel" onclick="delInvRow(this)" title="Sterge invertor">×</button></div>`;
+  return `<div class="invrow"><select class="invmodel" onchange="markInvTouched()">${invOptionsHtml(model)}</select><select class="invqty" onchange="markInvTouched()">${qtyOptionsHtml(qty)}</select><button type="button" class="invdel" onclick="delInvRow(this)" title="Sterge invertor">×</button></div>`;
 }
 window.addInvRow=function(model, qty){
   const cur=[...$('invlist').querySelectorAll('.invqty')].reduce((s,q)=>s+(parseInt(q.value)||1),0);
@@ -317,6 +318,7 @@ window.addInvRow=function(model, qty){
   calc();
 };
 window.delInvRow=function(btn){
+  invTouched=true;
   if($('invlist').querySelectorAll('.invrow').length<=1) return;
   btn.closest('.invrow').remove(); calc();
 };
@@ -378,6 +380,16 @@ function sectionOf(name){
   if(['Contor CT trifazat','Transformatoare curent','Logger monitorizare','Cablu comunicatie'].includes(name)) return '9. CONTOR SI MONITORIZARE';
   return '';
 }
+let invTouched=false;
+function markInvTouched(){ invTouched=true; calc(); }
+function autoSizeInv(){
+  if(invTouched) return;
+  const list=invModels(); if(!list.length) return;
+  const kwpV=parseFloat($('kwp').value)||0;
+  const pick=list.find(i=>i[2]===100) || list.reduce((a,b)=>b[2]>a[2]?b:a);
+  const qty=Math.min(8, Math.max(1, Math.ceil(kwpV/pick[2])||1));
+  $('invlist').innerHTML=invRowHtml(pick[3], qty);
+}
 function calc(){
   let kwp = parseFloat($('kwp').value)||0;
   if(kwp>400){kwp=400;$('kwp').value=400}
@@ -392,6 +404,7 @@ function calc(){
 
   const bat = DATA.baterii.find(b=>b[0]===$('bbrand').value && b[2-1]==$('bcap').value) || ['',0,'—',0];
   const nbat = Math.max(0, Math.round(parseFloat($('nbat').value)||0));
+  autoSizeInv();
   const invLines = readInvLines();
   const totCount = invLines.reduce((s,l)=>s+l.qty,0);
   const totInvKw = invLines.reduce((s,l)=>s+l.kw*l.qty,0);
@@ -416,8 +429,13 @@ function calc(){
   const str = structura($('montaj').value, N, DATA.structuraP, railM);
   const A=k=>DATA.acc[k+'|'+tip];
   let man=[1,0]; for(const m of DATA.manopera){ if(kwp>=m[0]) man=[m[1],m[2]]; }
-  const Uline = tip==='Trifazat'?400:230; const kFaza = tip==='Trifazat'?Math.sqrt(3):2; const secN = parseFloat(sect)||0;
-  const dropP = rho => (secN&&lalim&&amps)? (kFaza*amps*lalim*rho/secN)/Uline*100 : 0;
+  const Uline = tip==='Trifazat'?400:230; const kFaza = tip==='Trifazat'?Math.sqrt(3):2; const parseSect = str => { const m=String(str).match(/(\d+)\s*[x\u00d7]\s*(\d+)/i); return m ? parseInt(m[1])*parseInt(m[2]) : (parseFloat(str)||0); };
+  const maxInvKw = invLines.length ? Math.max(...invLines.map(l=>l.kw)) : totInvKw;
+  const driInv = dimRow(tip, maxInvKw);
+  const ampsInv = driInv ? driInv[2] : 0;
+  const sectInv = lalim<=50 ? driInv[3] : driInv[4];
+  const secN = parseSect(sectInv);
+  const dropP = rho => (secN&&lalim&&ampsInv)? (kFaza*ampsInv*lalim*rho/secN)/Uline*100 : 0;
   const dAl = dropP(0.036), dCu = dropP(0.0225);
   const vocV = parseFloat($('voc').value)||0; const psV = Math.max(1, parseInt($('pstr').value)||16); const vStringV = psV*vocV*COLD_FACTOR;
 
@@ -444,10 +462,10 @@ function calc(){
     ? {c:'warn', t:'⚠ Solis: nu este indicat sa combinati invertoare de puteri diferite. Recomandat acelasi model/putere (la Huawei si Sigenergy combinarea e ok).'}
     : null;
   const vCount = totCount>8 ? {c:'warn', t:`⚠ Ai ${totCount} invertoare in configuratie — maximul e 8. Reduceti numarul sau cantitatile.`} : null;
-  const vDrop = (!lalim||!amps) ? null
-    : (dAl<=3) ? {c:'ok', t:`✓ Cadere de tensiune AC (invertor→TEG) ~${dAl.toFixed(1)}% cu Aluminiu pe ${lalim} m — sub 3%, Al ok.`}
-    : (dCu<=3) ? {c:'warn', t:`⚠ Cadere de tensiune ${dAl.toFixed(1)}% cu Aluminiu pe ${lalim} m (>3%). Recomandat CUPRU (${dCu.toFixed(1)}%) sau sectiune mai mare.`}
-    : {c:'warn', t:`⚠ Cadere de tensiune ${dCu.toFixed(1)}% chiar si cu Cupru (>3%) pe ${lalim} m. Mariti sectiunea sau reduceti lungimea.`};
+  const vDrop = (!lalim||!ampsInv) ? null
+    : (dAl<=3) ? {c:'ok', t:`✓ Cadere tensiune AC per invertor (${maxInvKw} kW, ${ampsInv} A pe ${sectInv} Al, ${lalim} m): ${dAl.toFixed(2)}% — sub 3%, OK.`}
+    : (dCu<=3) ? {c:'info', t:`⚠ Per invertor (${maxInvKw} kW, ${ampsInv} A pe ${sectInv}, ${lalim} m): Aluminiu ${dAl.toFixed(2)}% (>3%). Foloseste CUPRU: ${dCu.toFixed(2)}% — OK.`}
+    : {c:'warn', t:`⚠ Per invertor (${maxInvKw} kW, ${ampsInv} A, ${lalim} m): ${dCu.toFixed(2)}% chiar si cu Cupru (>3%). Mareste sectiunea (peste ${sectInv}) sau scurteaza traseul.`};
   const vVolt = (!vocV||!psV) ? null
     : (vStringV > MAX_STRING_V) ? {c:'warn', t:`⚠ DEPASIRE TENSIUNE STRING: ${psV} panouri × ${vocV} V = ${vStringV.toFixed(0)} V > ${MAX_STRING_V} V admis. Reduceti nr. panouri/string.`}
     : {c:'ok', t:`✓ Tensiune string ${vStringV.toFixed(0)} V (${psV} × ${vocV} V) — sub ${MAX_STRING_V} V.`};
